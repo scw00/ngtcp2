@@ -216,7 +216,7 @@ auto htp_settings = http_parser_settings{
     nullptr,             // on_chunk_complete
 };
 
-Stream::Stream(uint64_t stream_id)
+Stream::Stream(struct ev_loop *loop, uint64_t stream_id)
     : stream_id(stream_id),
       streambuf_idx(0),
       tx_stream_offset(0),
@@ -227,9 +227,11 @@ Stream::Stream(uint64_t stream_id)
       prev_hdr_key(false),
       fd(-1),
       data(nullptr),
-      datalen(0) {
+      datalen(0) , 
+      loop(loop) {
   http_parser_init(&htp, HTTP_REQUEST);
   htp.data = this;
+  start_time = util::timestamp(loop);
 }
 
 Stream::~Stream() {
@@ -244,6 +246,11 @@ int Stream::recv_data(uint8_t fin, const uint8_t *data, size_t datalen) {
       &htp, &htp_settings, reinterpret_cast<const char *>(data), datalen);
   if (nread != datalen) {
     return -1;
+  }
+  recv_bytes += datalen;
+  if (fin) {
+    auto end = util::timestamp(loop);
+    std::cerr << "recv bytes: " << recv_bytes << " duration: " << (end - start_time) / 1000000 << std::endl;
   }
 
   return 0;
@@ -921,7 +928,7 @@ int Handler::tls_handshake() {
 
   // TODO Create stream 0 to send post-handshake data.  Probably, we
   // should feed data in recv_stream0_data as well.
-  auto stream = std::make_unique<Stream>(0);
+  auto stream = std::make_unique<Stream>(loop_, 0);
   if (shandshake_idx_ != shandshake_.size()) {
     auto &v = shandshake_[shandshake_idx_++];
     stream->streambuf.emplace_back(v.rpos(), v.size());
@@ -1606,7 +1613,7 @@ int Handler::recv_stream_data(uint64_t stream_id, uint8_t fin,
 
   auto it = streams_.find(stream_id);
   if (it == std::end(streams_)) {
-    it = streams_.emplace(stream_id, std::make_unique<Stream>(stream_id)).first;
+    it = streams_.emplace(stream_id, std::make_unique<Stream>(loop_, stream_id)).first;
   }
 
   auto &stream = (*it).second;
@@ -1691,7 +1698,7 @@ int Handler::send_greeting() {
     return 0;
   }
 
-  auto stream = std::make_unique<Stream>(stream_id);
+  auto stream = std::make_unique<Stream>(loop_, stream_id);
 
   static constexpr uint8_t hw[] = "Hello World!";
   stream->streambuf.emplace_back(hw, str_size(hw));
@@ -1825,8 +1832,8 @@ int Server::on_read() {
     auto nread =
         recvfrom(fd_, buf.data(), buf.size(), MSG_DONTWAIT, &su.sa, &addrlen);
     if (nread == -1) {
-      if (!(errno == -EAGAIN || errno == -ENOTCONN)) {
-        std::cerr << "recvfrom: " << strerror(errno) << std::endl;
+      if (!(errno == EAGAIN || errno == ENOTCONN)) {
+        std::cerr << "recvfrom: " << errno << std::endl;
       }
       // TODO Handle running out of fd
       return 0;

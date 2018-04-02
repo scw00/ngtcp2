@@ -104,7 +104,7 @@ enum {
 };
 
 struct Stream {
-  Stream(uint64_t stream_id);
+  Stream(struct ev_loop *loop, uint64_t stream_id);
   ~Stream();
 
   int recv_data(uint8_t fin, const uint8_t *data, size_t datalen);
@@ -147,6 +147,12 @@ struct Stream {
   uint8_t *data;
   // datalen is the length of mapped file by data.
   uint64_t datalen;
+  // receive total bytes
+  uint64_t recv_bytes = 0;
+  // start time
+  uint64_t start_time = 0;
+  // ev loop
+  struct ev_loop *loop = nullptr;
 };
 
 class Server;
