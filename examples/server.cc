@@ -242,11 +242,11 @@ Stream::~Stream() {
 }
 
 int Stream::recv_data(uint8_t fin, const uint8_t *data, size_t datalen) {
-  auto nread = http_parser_execute(
-      &htp, &htp_settings, reinterpret_cast<const char *>(data), datalen);
-  if (nread != datalen) {
-    return -1;
-  }
+//   auto nread = http_parser_execute(
+//       &htp, &htp_settings, reinterpret_cast<const char *>(data), datalen);
+//   if (nread != datalen) {
+//     return -1;
+//   }
   recv_bytes += datalen;
   if (fin) {
     auto end = util::timestamp(loop);
